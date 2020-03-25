@@ -1,8 +1,11 @@
 #include <cstdint>
+#include<cstdio>
 uint8_t HL(Cpu*);
 void setzsp(Cpu *,uint8_t);
 bool parity(uint16_t);
 void setfl(Cpu *,uint8_t,bool);
+
+void cpuinfo(Cpu *);
 typedef enum flags{C,P,AC,Z,S};
 typedef struct Cpu{
     uint8_t A;
@@ -40,3 +43,23 @@ void setfl(Cpu *cpu,uint8_t flag,bool b) {
     else 
 		cpu->cc &= ~(1 << flag);//sets flag false
 }
+uint8_t getfl(Cpu *cpu,uint8_t flag){
+	return (cpu->cc >> flag) & 1;
+}
+
+//print cpu info
+void cpuinfo(Cpu *cpu) {
+    printf("A= %x\n", cpu->A);
+    printf("B= %x\n", cpu->B);
+    printf("C= %x\n", cpu->C);
+    printf("D= %x\n", cpu->D);
+    printf("E= %x\n", cpu->E);
+    printf("H= %x\n", cpu->H);
+    printf("L= %x\n", cpu->L);
+    printf("SP= %x\n", cpu->SP);
+    printf("PC= %x\n", cpu->PC);
+    printf("S=%d,Z=%d,C=%d,P=%d,AC=%d\n", getfl(cpu,S),
+    getfl(cpu,Z), getfl(cpu,C), getfl(cpu,P), getfl(cpu,AC));
+}
+//execute opcodes
+void excop(){}
