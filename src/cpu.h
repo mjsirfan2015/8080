@@ -1,7 +1,9 @@
+#include <string>
 #include <cstdint>
 #include<cstdio>
 #include<stdlib.h>
-
+#include <unistd.h>
+#define FOR_CPUDIAG 0
 enum flags{C,P,AC,Z,S};
 struct Cpu{
 	uint8_t A;
@@ -22,6 +24,20 @@ bool parity(uint16_t);
 void setfl(Cpu *,uint8_t,bool);
 
 void cpuinfo(Cpu *);
+
+void readfile(std::string filename,uint8_t *buffer){
+    FILE * filp = fopen(filename.c_str(), "rb");
+    if(!filp){
+        printf("File Not Found");
+        exit(0);
+    }
+    fseek(filp,0L,SEEK_END);
+    int size=ftell(filp);
+    rewind(filp);
+    int bytes_read = fread(buffer, sizeof(uint8_t), size, filp);
+    printf("Bytes Read: %d.\n",bytes_read);
+    fclose(filp);
+}
 void unimp(uint8_t op){
     printf("Unimplimented opcode: %x\n",op);
 }
@@ -65,6 +81,17 @@ void cpuinfo(Cpu *cpu) {
     printf("S=%d,Z=%d,C=%d,P=%d,AC=%d\n", getfl(cpu,S),
     getfl(cpu,Z), getfl(cpu,C), getfl(cpu,P), getfl(cpu,AC));
 }
+
+void cpuinfo_concise(Cpu *cpu,FILE *file){
+	fprintf(file,"AF=%.2x%.2x ",cpu->A,cpu->cc);
+	fprintf(file,"BC=%.2x%.2x ",cpu->B,cpu->C);
+	fprintf(file,"DE=%.2x%.2x ",cpu->D,cpu->E);
+	fprintf(file,"HL=%.2x%.2x ",cpu->H,cpu->L);
+	fprintf(file,"SP=%.2x ", cpu->SP);
+    fprintf(file,"PC=%.2x ", cpu->PC);
+	fprintf(file,"S=%d,Z=%d,C=%d,P=%d,AC=%d\n", getfl(cpu,S),
+    getfl(cpu,Z), getfl(cpu,C), getfl(cpu,P), getfl(cpu,AC));
+}
 //execute opcodes
 void  lxi(Cpu *cpu,uint8_t *r1, uint8_t *r2) {
 	*r1 = cpu->Memory[cpu->PC+2];
@@ -85,12 +112,12 @@ void dcx(uint8_t *r1, uint8_t *r2) {
 	*r2 = (uint8_t)(val & 0xff);
 }
 void inr(Cpu *cpu,uint8_t *reg) {
-	*reg++;
+	++*reg;
 	setzsp(cpu,*reg);
 	//set AC
 }
 void dcr(Cpu *cpu,uint8_t *reg) {
-	*reg--;
+	--*reg;
 	setzsp(cpu,*reg);
 	//set AC
 }
@@ -100,9 +127,10 @@ void mov(uint8_t *dst, uint8_t *src) {
 void  dad(Cpu *cpu,uint8_t r1,uint8_t r2) {
 	uint32_t ans;
 	uint32_t hl = (uint32_t)(cpu->H)<<8 | (uint32_t)(cpu->L);
-	uint32_t r = (uint32_t)(r1)<<8 | (uint32_t)(r1);
+	uint32_t r = (uint32_t)(r1)<<8 | (uint32_t)(r2);
+	//printf("hex:%x\n",hl+r);
 	ans = hl + r;
-	cpu->H = (uint8_t)(ans >> 8);
+	cpu->H = (uint8_t)((ans&0xffff) >> 8);
 	cpu->L = (uint8_t)(ans & 0xff);
 	//fmt.Printf("%x\n", ans)
 	setfl(cpu,C, (ans > 0xffff));
@@ -177,7 +205,7 @@ void pop(Cpu *cpu,uint8_t *r1, uint8_t *r2) {
 }
 void jmp(Cpu *cpu) {
 	cpu->PC = (uint16_t)(cpu->Memory[cpu->PC+2])<<8 | (uint16_t)(cpu->Memory[cpu->PC+1]);
-	cpu->PC--;
+	--cpu->PC;
 }
 void push(Cpu *cpu, uint8_t *r1, uint8_t *r2) {
 	cpu->Memory[cpu->SP-2] = *r2;
@@ -217,7 +245,7 @@ void excop(Cpu *cpu){
 		inr(cpu,&cpu->B);
         break;
 	case 0x5: //DCR B
-		inr(cpu,&cpu->B);
+		dcr(cpu,&cpu->B);
         break;
 	case 0x6: //MVI B, D8
 		mov(&cpu->B, &cpu->Memory[cpu->PC+1]);
@@ -414,7 +442,7 @@ void excop(Cpu *cpu){
 		cpu->PC += 2;
         break;
 	case 0x3b: //DCX SP
-		cpu->SP--;
+		--cpu->SP;
         break;
 	case 0x3c: //INR A
 		inr(cpu,&cpu->A);
@@ -904,7 +932,32 @@ void excop(Cpu *cpu){
 		}
 		break;
 	case 0xcd: //CALL adr
+	#ifdef FOR_CPUDIAG
+				if (5 ==  ((cpu->Memory[(int)cpu->PC+2] << 8) | cpu->Memory[(int)cpu->PC+1]))    
+				{    
+					if (cpu->C == 9)    
+					{    
+						uint16_t offset = (cpu->D<<8) | (cpu->E);    
+						uint8_t *str =&cpu->Memory[offset+3];  //skip the prefix bytes    
+						while ((char)*str != '$')    
+							printf("%c", (char)*str++);    
+						printf("\n");    
+					}    
+					else if (cpu->C == 2)    
+					{    
+						//saw this in the inspected code, never saw it called    
+						printf ("print char routine called\n");    
+					}    
+				}    
+				else if (0 ==  ((cpu->Memory[(int)cpu->PC+2] << 8) | cpu->Memory[(int)cpu->PC+1]))    
+				{    
+					exit(0);    
+				}    
+				else    
+   #endif 
+	{
 		call(cpu);
+	}
 		break;
 	case 0xce: //ACI D8
 		add(cpu,(uint16_t)(cpu->Memory[cpu->PC+1]), true, false);
